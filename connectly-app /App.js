@@ -1,202 +1,263 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
-  StatusBar,
   Alert,
-  ScrollView
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StatusBar,
 } from 'react-native';
 
+import { supabase } from './supabase';
+
 export default function App() {
-  const [isLogin, setIsLogin] = useState(true);
-  const [name, setName] = useState('');
+  const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [session, setSession] = useState(null);
 
-  const handleContinue = () => {
-    if (!email || !password || (!isLogin && !name)) {
-      Alert.alert('Missing information', 'Please complete all required fields.');
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+    });
+
+    const { data: { subscription } } =
+      supabase.auth.onAuthStateChange((_event, newSession) => {
+        setSession(newSession);
+      });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function handleAuth() {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail || !password) {
+      Alert.alert('Missing details', 'Please enter your email and password.');
       return;
     }
 
-    Alert.alert(
-      'Connectly',
-      'Your screen is ready! Supabase authentication will be connected next.'
+    if (password.length < 6) {
+      Alert.alert('Password too short', 'Use at least 6 characters.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      if (isSignup) {
+        const { data, error } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password,
+        });
+
+        if (error) throw error;
+
+        if (data.session) {
+          Alert.alert('Welcome to Connectly!', 'Your account is ready.');
+        } else {
+          Alert.alert(
+            'Check your email',
+            'Your account has been created. Please confirm your email before logging in.'
+          );
+        }
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
+
+        if (error) throw error;
+      }
+    } catch (error) {
+      Alert.alert('Authentication error', error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleLogout() {
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      Alert.alert('Error', error.message);
+    }
+  }
+
+  if (session) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" />
+        <Text style={styles.logo}>Connectly</Text>
+        <Text style={styles.heading}>You're connected!</Text>
+        <Text style={styles.subtitle}>{session.user.email}</Text>
+        <Text style={styles.welcome}>
+          Welcome to your Connectly account.
+        </Text>
+        <TouchableOpacity style={styles.button} onPress={handleLogout}>
+          <Text style={styles.buttonText}>Log out</Text>
+        </TouchableOpacity>
+      </View>
     );
-  };
+  }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#10102B" />
-
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.logo}>
-          <Text style={styles.logoText}>C</Text>
-        </View>
-
-        <Text style={styles.brand}>Connectly</Text>
-        <Text style={styles.tagline}>
-          Connect. Chat. Share.
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <StatusBar barStyle="light-content" />
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.logo}>Connectly.</Text>
+        <Text style={styles.heading}>
+          {isSignup ? 'Create your account' : 'Welcome back'}
+        </Text>
+        <Text style={styles.subtitle}>
+          {isSignup
+            ? 'Join Connectly and stay close to everyone.'
+            : 'Sign in to continue your conversations.'}
         </Text>
 
-        <View style={styles.card}>
-          <Text style={styles.heading}>
-            {isLogin ? 'Welcome Back!' : 'Create Account'}
-          </Text>
+        <Text style={styles.label}>Email address</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter your email"
+          placeholderTextColor="#8C91A8"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          value={email}
+          onChangeText={setEmail}
+        />
 
-          <Text style={styles.subtitle}>
-            {isLogin
-              ? 'Sign in to continue your conversations.'
-              : 'Join Connectly and stay connected.'}
-          </Text>
+        <Text style={styles.label}>Password</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter your password"
+          placeholderTextColor="#8C91A8"
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+        />
 
-          {!isLogin && (
-            <TextInput
-              style={styles.input}
-              placeholder="Your full name"
-              placeholderTextColor="#9292A8"
-              value={name}
-              onChangeText={setName}
-            />
-          )}
-
-          <TextInput
-            style={styles.input}
-            placeholder="Email address"
-            placeholderTextColor="#9292A8"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor="#9292A8"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
-
-          <TouchableOpacity
-            style={styles.button}
-            onPress={handleContinue}
-          >
+        <TouchableOpacity
+          style={styles.button}
+          onPress={handleAuth}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
             <Text style={styles.buttonText}>
-              {isLogin ? 'Sign In' : 'Create Account'}
+              {isSignup ? 'Create account' : 'Sign in'}
             </Text>
-          </TouchableOpacity>
+          )}
+        </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() => setIsLogin(!isLogin)}
-          >
-            <Text style={styles.switchText}>
-              {isLogin
-                ? "Don't have an account? Sign Up"
-                : 'Already have an account? Sign In'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          onPress={() => setIsSignup(!isSignup)}
+          style={styles.switchButton}
+        >
+          <Text style={styles.switchText}>
+            {isSignup
+              ? 'Already have an account? Sign in'
+              : "Don't have an account? Sign up"}
+          </Text>
+        </TouchableOpacity>
 
         <Text style={styles.footer}>
-          Connectly • Your world, connected.
+          Connect with the people who matter.
         </Text>
       </ScrollView>
-    </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#10102B'
+    backgroundColor: '#101329',
+    justifyContent: 'center',
   },
   content: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 24
+    padding: 28,
   },
   logo: {
-    width: 76,
-    height: 76,
-    borderRadius: 24,
-    backgroundColor: '#8055F5',
-    alignSelf: 'center',
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  logoText: {
-    color: '#FFFFFF',
-    fontSize: 42,
-    fontWeight: 'bold'
-  },
-  brand: {
-    color: '#FFFFFF',
+    color: '#A78BFA',
     fontSize: 34,
     fontWeight: 'bold',
+    marginBottom: 35,
     textAlign: 'center',
-    marginTop: 14
-  },
-  tagline: {
-    color: '#B7A8F8',
-    textAlign: 'center',
-    fontSize: 15,
-    marginTop: 6,
-    marginBottom: 32
-  },
-  card: {
-    backgroundColor: '#1D1D3B',
-    padding: 24,
-    borderRadius: 22
   },
   heading: {
     color: '#FFFFFF',
-    fontSize: 25,
+    fontSize: 27,
     fontWeight: 'bold',
-    marginBottom: 8
+    textAlign: 'center',
+    marginBottom: 12,
   },
   subtitle: {
-    color: '#B6B6CA',
+    color: '#B9BCD0',
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 35,
+  },
+  label: {
+    color: '#FFFFFF',
     fontSize: 14,
-    marginBottom: 24
+    fontWeight: '600',
+    marginBottom: 9,
   },
   input: {
-    backgroundColor: '#292947',
+    backgroundColor: '#20243E',
+    borderColor: '#353A5C',
+    borderWidth: 1,
+    borderRadius: 12,
     color: '#FFFFFF',
     padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    fontSize: 15
+    fontSize: 16,
+    marginBottom: 22,
   },
   button: {
-    backgroundColor: '#8055F5',
+    backgroundColor: '#7957E8',
     padding: 17,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 8
+    marginTop: 12,
   },
   buttonText: {
     color: '#FFFFFF',
+    fontWeight: 'bold',
     fontSize: 16,
-    fontWeight: 'bold'
+  },
+  switchButton: {
+    alignItems: 'center',
+    padding: 20,
   },
   switchText: {
-    color: '#BBA7FF',
-    textAlign: 'center',
-    marginTop: 22,
-    fontSize: 14
+    color: '#B9A5FF',
+    fontSize: 14,
   },
   footer: {
-    color: '#777792',
+    color: '#777D9A',
     textAlign: 'center',
-    marginTop: 30,
-    fontSize: 12
-  }
+    marginTop: 25,
+  },
+  welcome: {
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginTop: 25,
+  },
 });
-
